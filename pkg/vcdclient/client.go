@@ -29,6 +29,9 @@ type OneArm struct {
 // Client :
 type Client struct {
 	vcdAuthConfig      *VCDAuthConfig
+	ClusterOrgName     string
+	ClusterOVDCName    string
+	ClusterVAppName    string
 	vcdClient          *govcd.VCDClient
 	vdc                *govcd.Vdc
 	apiClient          *swaggerClient.APIClient
@@ -53,22 +56,22 @@ func (client *Client) RefreshToken() error {
 		klog.Info("Refreshing tokens as previous one has expired")
 		client.vcdClient.Client.APIVersion = VCloudApiVersion
 		err := client.vcdClient.Authenticate(client.vcdAuthConfig.User,
-			client.vcdAuthConfig.Password, client.vcdAuthConfig.Org)
+			client.vcdAuthConfig.Password, client.vcdAuthConfig.UserOrg)
 		if err != nil {
 			return fmt.Errorf("unable to Authenticate user [%s]: [%v]",
 				client.vcdAuthConfig.User, err)
 		}
 
-		org, err := client.vcdClient.GetOrgByNameOrId(client.vcdAuthConfig.Org)
+		org, err := client.vcdClient.GetOrgByNameOrId(client.ClusterOrgName)
 		if err != nil {
 			return fmt.Errorf("unable to get vcd organization [%s]: [%v]",
-				client.vcdAuthConfig.Org, err)
+				client.ClusterOrgName, err)
 		}
 
-		vdc, err := org.GetVDCByName(client.vcdAuthConfig.VDC, true)
+		vdc, err := org.GetVDCByName(client.ClusterOVDCName, true)
 		if err != nil {
 			return fmt.Errorf("unable to get vdc from org [%s], vdc [%s]: [%v]",
-				client.vcdAuthConfig.Org, client.vcdAuthConfig.VDC, err)
+				client.ClusterOrgName, client.vcdAuthConfig.VDC, err)
 		}
 
 		client.vdc = vdc
@@ -78,8 +81,8 @@ func (client *Client) RefreshToken() error {
 }
 
 // NewVCDClientFromSecrets :
-func NewVCDClientFromSecrets(host string, orgName string, vdcName string,
-	networkName string, ipamSubnet string, user string, password string,
+func NewVCDClientFromSecrets(host string, orgName string, vdcName string, vAppName string,
+	networkName string, ipamSubnet string, userOrg string, user string, password string,
 	refreshToken string, insecure bool, clusterID string, oneArm *OneArm,
 	httpPort int32, httpsPort int32, certAlias string, getVdcClient bool) (*Client, error) {
 
@@ -92,8 +95,10 @@ func NewVCDClientFromSecrets(host string, orgName string, vdcName string,
 	// This is suboptimal but is not a common case.
 	if clientSingleton != nil {
 		if clientSingleton.vcdAuthConfig.Host == host &&
-			clientSingleton.vcdAuthConfig.Org == orgName &&
-			clientSingleton.vcdAuthConfig.VDC == vdcName &&
+			clientSingleton.ClusterOrgName == orgName &&
+			clientSingleton.ClusterOVDCName == vdcName &&
+			clientSingleton.ClusterVAppName == vAppName &&
+			clientSingleton.vcdAuthConfig.UserOrg == userOrg &&
 			clientSingleton.vcdAuthConfig.User == user &&
 			clientSingleton.vcdAuthConfig.Password == password &&
 			clientSingleton.vcdAuthConfig.RefreshToken == refreshToken &&
@@ -102,7 +107,7 @@ func NewVCDClientFromSecrets(host string, orgName string, vdcName string,
 		}
 	}
 
-	vcdAuthConfig := NewVCDAuthConfigFromSecrets(host, user, password, refreshToken, orgName, insecure)
+	vcdAuthConfig := NewVCDAuthConfigFromSecrets(host, user, password, refreshToken, userOrg, insecure)
 
 	vcdClient, apiClient, err := vcdAuthConfig.GetSwaggerClientFromSecrets()
 	if err != nil {
@@ -110,16 +115,19 @@ func NewVCDClientFromSecrets(host string, orgName string, vdcName string,
 	}
 
 	client := &Client{
-		vcdAuthConfig:    vcdAuthConfig,
-		vcdClient:        vcdClient,
-		apiClient:        apiClient,
-		networkName:      networkName,
-		ipamSubnet:       ipamSubnet,
-		gatewayRef:       nil,
-		ClusterID:        clusterID,
-		OneArm:           oneArm,
-		HTTPPort:         httpPort,
-		HTTPSPort:        httpsPort,
+		vcdAuthConfig:   vcdAuthConfig,
+		ClusterOrgName:  orgName,
+		ClusterOVDCName: vdcName,
+		ClusterVAppName: vAppName,
+		vcdClient:       vcdClient,
+		apiClient:       apiClient,
+		networkName:     networkName,
+		ipamSubnet:      ipamSubnet,
+		gatewayRef:      nil,
+		ClusterID:       clusterID,
+		OneArm:          oneArm,
+		HTTPPort:        httpPort,
+		HTTPSPort:       httpsPort,
 		CertificateAlias: certAlias,
 	}
 
