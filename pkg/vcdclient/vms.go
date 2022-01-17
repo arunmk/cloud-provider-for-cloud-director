@@ -19,6 +19,36 @@ const (
 	VCDVMIDPrefix = "urn:vcloud:vm:"
 )
 
+// GetVMNameInVAppsWithPrefix returns a list of vApp Reference if the vApp prefix matches an existing vApp name.
+// If no valid vApp is found, it returns a nil VApp reference list and an error
+func GetVMNameInVAppsWithPrefix(vdc *govcd.Vdc, vappPrefix string, vmName string) (*govcd.VM, error) {
+
+	for _, resourceEntities := range vdc.Vdc.ResourceEntities {
+		for _, resourceReference := range resourceEntities.ResourceEntity {
+			if strings.HasPrefix(resourceReference.Name, vappPrefix) &&
+				resourceReference.Type == "application/vnd.vmware.vcloud.vApp+xml" {
+				vApp, err := vdc.GetVAppByHref(resourceReference.HREF)
+				if err != nil {
+					klog.Errorf("unable to get reference of vApp [%s]: [%v]", resourceReference.Name, err)
+					continue
+				}
+				vm, err := vApp.GetVMByName(vmName, false)
+				if err == nil {
+					klog.Infof("Found vm [%s] in vApp [%s]", vmName, resourceReference.Name)
+					return vm, nil
+				} else if err == govcd.ErrorEntityNotFound {
+					continue
+				} else {
+					klog.Errorf("error looking for vm [%s] in vApp [%s]: [%v]", vmName,
+						resourceReference.Name, err)
+					continue
+				}
+			}
+		}
+	}
+	return nil, govcd.ErrorEntityNotFound
+}
+
 // FindVMByName finds a VM in a vApp using the name. The client is expected to have a valid
 // bearer token when this function is called.
 func (client *Client) FindVMByName(vmName string) (*govcd.VM, error) {
@@ -26,18 +56,43 @@ func (client *Client) FindVMByName(vmName string) (*govcd.VM, error) {
 		return nil, fmt.Errorf("vmName mandatory for FindVMByName")
 	}
 
-	klog.Infof("Trying to find vm [%s] in vApp [%s] by name", vmName, client.ClusterVAppName)
-	vApp, err := client.vdc.GetVAppByName(client.ClusterVAppName, true)
-	if err != nil {
-		return nil, fmt.Errorf("unable to find vApp [%s] by name: [%v]", client.ClusterVAppName, err)
-	}
-
-	vm, err := vApp.GetVMByName(vmName, true)
+	klog.Infof("Trying to find vm [%s] by name in vApp with prefix [%s]", vmName, client.ClusterVAppName)
+	vm, err := GetVMNameInVAppsWithPrefix(client.vdc, client.ClusterVAppName, vmName)
 	if err != nil {
 		return nil, fmt.Errorf("unable to find vm [%s] in vApp [%s]: [%v]", vmName, client.ClusterVAppName, err)
 	}
 
 	return vm, nil
+}
+
+// GetVMIDInVAppsWithPrefix returns a list of vApp Reference if the vApp prefix matches an existing vApp name.
+// If no valid vApp is found, it returns a nil VApp reference list and an error
+func GetVMIDInVAppsWithPrefix(vdc *govcd.Vdc, vappPrefix string, vmID string) (*govcd.VM, error) {
+
+	for _, resourceEntities := range vdc.Vdc.ResourceEntities {
+		for _, resourceReference := range resourceEntities.ResourceEntity {
+			if strings.HasPrefix(resourceReference.Name, vappPrefix) &&
+				resourceReference.Type == "application/vnd.vmware.vcloud.vApp+xml" {
+				vApp, err := vdc.GetVAppByHref(resourceReference.HREF)
+				if err != nil {
+					klog.Errorf("unable to get reference of vApp [%s]: [%v]", resourceReference.Name, err)
+					continue
+				}
+				vm, err := vApp.GetVMById(vmID, false)
+				if err == nil {
+					klog.Infof("Found vm [%s] in vApp [%s]", vmID, resourceReference.Name)
+					return vm, nil
+				} else if err == govcd.ErrorEntityNotFound {
+					continue
+				} else {
+					klog.Errorf("error looking for vm [%s] in vApp [%s]: [%v]", vmID,
+						resourceReference.Name, err)
+					continue
+				}
+			}
+		}
+	}
+	return nil, govcd.ErrorEntityNotFound
 }
 
 // FindVMByUUID finds a VM in a vApp using the UUID. The client is expected to have a valid
@@ -50,16 +105,9 @@ func (client *Client) FindVMByUUID(vcdVmUUID string) (*govcd.VM, error) {
 	klog.Infof("Trying to find vm [%s] in vApp [%s] by UUID", vcdVmUUID, client.ClusterVAppName)
 	vmUUID := strings.TrimPrefix(vcdVmUUID, VCDVMIDPrefix)
 
-	vApp, err := client.vdc.GetVAppByName(client.ClusterVAppName, true)
+	vm, err := GetVMIDInVAppsWithPrefix(client.vdc, client.ClusterVAppName, vmUUID)
 	if err != nil {
 		return nil, fmt.Errorf("unable to find vApp [%s] by name: [%v]", client.ClusterVAppName, err)
-	}
-
-
-	vm, err := vApp.GetVMById(vmUUID, true)
-	if err != nil {
-		return nil, fmt.Errorf("unable to find vm UUID [%s] in vApp [%s]: [%v]",
-			vmUUID, client.ClusterVAppName, err)
 	}
 
 	return vm, nil
